@@ -1,0 +1,6 @@
+{
+  "name": "LingoLeap - Personal English Helper",
+  "description": "An application to help you expand your English vocabulary and master grammatical structures. It features a spaced repetition system for vocabulary, and an AI-powered grammar checker to provide feedback on your example sentences.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
