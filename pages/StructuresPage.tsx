@@ -19,6 +19,16 @@ const CheckBadgeIcon: React.FC<{ className?: string, title?: string }> = ({ clas
         <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
     </svg>
 );
+const GripVerticalIcon: React.FC<{ className?: string }> = ({ className }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="9" cy="12" r="1"></circle>
+      <circle cx="9" cy="5" r="1"></circle>
+      <circle cx="9" cy="19" r="1"></circle>
+      <circle cx="15" cy="12" r="1"></circle>
+      <circle cx="15" cy="5" r="1"></circle>
+      <circle cx="15" cy="19" r="1"></circle>
+  </svg>
+);
 
 
 export default function StructuresPage() {
@@ -28,6 +38,8 @@ export default function StructuresPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [isQuizActive, setIsQuizActive] = useState(false);
   const [isPracticeAgainMode, setIsPracticeAgainMode] = useState(false);
+  const [renamingCategory, setRenamingCategory] = useState<string | null>(null);
+  const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
 
 
   const handleAdd = () => {
@@ -72,9 +84,8 @@ export default function StructuresPage() {
   
   const groupedStructures = useMemo(() => {
     const groups: Record<string, StructureItem[]> = {};
-    const sorted = [...structures].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    
-    for (const item of sorted) {
+    // Order is preserved from the main `structures` array to allow for manual sorting.
+    for (const item of structures) {
       const category = item.category.trim() || 'Uncategorized';
       if (!groups[category]) {
         groups[category] = [];
@@ -83,7 +94,29 @@ export default function StructuresPage() {
     }
     return groups;
   }, [structures]);
+
+  const sortedCategories = useMemo(() => Object.keys(groupedStructures).sort((a, b) => a.localeCompare(b)), [groupedStructures]);
   
+  const handleRenameCategory = (oldName: string, newName: string) => {
+      const trimmedNewName = newName.trim();
+      if (!trimmedNewName || trimmedNewName === oldName || sortedCategories.includes(trimmedNewName)) {
+        // Error handling is done in the modal, this is a safeguard
+        return;
+      }
+
+      setStructures(prev =>
+        prev.map(item =>
+          item.category === oldName ? { ...item, category: trimmedNewName } : item
+        )
+      );
+
+      if (selectedCategory === oldName) {
+        setSelectedCategory(trimmedNewName);
+      }
+      
+      setRenamingCategory(null);
+    };
+
   const selectedCategoryStructures = selectedCategory ? groupedStructures[selectedCategory] || [] : [];
   
   const structuresForQuiz = useMemo(() => {
@@ -122,7 +155,54 @@ export default function StructuresPage() {
       setIsPracticeAgainMode(false);
   };
 
-  const sortedCategories = useMemo(() => Object.keys(groupedStructures).sort((a, b) => a.localeCompare(b)), [groupedStructures]);
+  // --- Drag and Drop Handlers ---
+  const handleDragStart = (e: React.DragEvent<HTMLLIElement>, id: string) => {
+      e.dataTransfer.effectAllowed = 'move';
+      setDraggedItemId(id);
+      e.currentTarget.classList.add('opacity-50');
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLLIElement>) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+  };
+  
+  const handleDragEnter = (e: React.DragEvent<HTMLLIElement>) => {
+      e.preventDefault();
+      e.currentTarget.classList.add('dark:bg-slate-700', 'bg-slate-100');
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLLIElement>) => {
+      e.currentTarget.classList.remove('dark:bg-slate-700', 'bg-slate-100');
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLLIElement>, dropTargetId: string) => {
+      e.preventDefault();
+      e.currentTarget.classList.remove('dark:bg-slate-700', 'bg-slate-100');
+      if (!draggedItemId || draggedItemId === dropTargetId) {
+          return;
+      }
+
+      const newStructures = [...structures];
+      const draggedIndex = newStructures.findIndex(s => s.id === draggedItemId);
+      const dropTargetIndex = newStructures.findIndex(s => s.id === dropTargetId);
+      
+      if (draggedIndex === -1 || dropTargetIndex === -1) return;
+
+      const [draggedItem] = newStructures.splice(draggedIndex, 1);
+      newStructures.splice(dropTargetIndex, 0, draggedItem);
+
+      setStructures(newStructures);
+  };
+  
+  const handleDragEnd = (e: React.DragEvent<HTMLLIElement>) => {
+      e.currentTarget.classList.remove('opacity-50');
+      setDraggedItemId(null);
+       document.querySelectorAll('.dark\\:bg-slate-700.bg-slate-100').forEach(el => {
+          el.classList.remove('dark:bg-slate-700', 'bg-slate-100');
+      });
+  };
+
   
   if (isQuizActive && selectedCategory) {
     const quizItems = isPracticeAgainMode ? selectedCategoryStructures : structuresForQuiz;
@@ -191,10 +271,21 @@ export default function StructuresPage() {
                     <div 
                         key={category} 
                         onClick={() => setSelectedCategory(category)} 
-                        className="group flex flex-col bg-gradient-to-br from-[#2A374A] to-[#1E293B] p-5 rounded-lg shadow-lg cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-in-out"
+                        className="group relative flex flex-col bg-gradient-to-br from-[#2A374A] to-[#1E293B] p-5 rounded-lg shadow-lg cursor-pointer hover:shadow-xl hover:-translate-y-1 transition-all duration-300 ease-in-out"
                     >
+                        <button 
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setRenamingCategory(category);
+                            }}
+                            className="absolute top-3 right-3 p-1.5 text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-600 rounded-full opacity-0 group-hover:opacity-100 transition-all"
+                            title={`Rename "${category}"`}
+                            aria-label={`Rename category ${category}`}
+                        >
+                            <PencilIcon className="h-4 w-4" />
+                        </button>
                         <div className="flex-grow">
-                            <h3 className="text-2xl font-bold text-white group-hover:text-sky-300 transition-colors">{category}</h3>
+                            <h3 className="text-2xl font-bold text-white group-hover:text-sky-300 transition-colors pr-8">{category}</h3>
                             <div className="mt-2 w-full bg-slate-600 rounded-full h-1.5">
                                 <div className="bg-yellow-400 h-1.5 rounded-full" style={{width: `${progress}%`}}></div>
                             </div>
@@ -217,8 +308,21 @@ export default function StructuresPage() {
       ) : (
         <ul className="space-y-3 pt-4">
             {selectedCategoryStructures.length > 0 ? selectedCategoryStructures.map(item => (
-            <li key={item.id} className="bg-white dark:bg-slate-800/50 p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow group list-none">
-                <div className="flex justify-between items-start gap-4">
+            <li 
+              key={item.id} 
+              className="bg-white dark:bg-slate-800/50 p-4 rounded-lg shadow-sm hover:shadow-md transition-shadow group list-none flex items-center gap-3"
+              draggable="true"
+              onDragStart={(e) => handleDragStart(e, item.id)}
+              onDragOver={handleDragOver}
+              onDrop={(e) => handleDrop(e, item.id)}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDragEnd={handleDragEnd}
+            >
+                <div className="cursor-move text-slate-400 dark:text-slate-500" title="Drag to reorder">
+                    <GripVerticalIcon className="h-5 w-5" />
+                </div>
+                <div className="flex-grow flex justify-between items-start gap-4">
                   <div className="flex-1 flex items-center gap-3">
                       {item.consecutiveCorrectAnswers >= MASTERY_THRESHOLD && (
                           <CheckBadgeIcon className="h-5 w-5 text-yellow-400 flex-shrink-0" title="Mastered!"/>
@@ -237,7 +341,7 @@ export default function StructuresPage() {
                 </div>
             </li>
             )) : (
-                <li className="text-center py-16 px-6 bg-white dark:bg-slate-800 rounded-lg shadow-sm">
+                <li className="text-center py-16 px-6 bg-white dark:bg-slate-800 rounded-lg shadow-sm list-none">
                     <p className="text-slate-500 dark:text-slate-400">No structures in this set yet.</p>
                 </li>
             )}
@@ -245,6 +349,14 @@ export default function StructuresPage() {
       )}
 
       {isFormOpen && <StructureForm currentStructure={editingStructure} onSave={handleSave} onClose={() => setIsFormOpen(false)} initialCategory={selectedCategory} />}
+      {renamingCategory && (
+        <RenameCategoryModal
+          oldName={renamingCategory}
+          allCategories={sortedCategories}
+          onSave={handleRenameCategory}
+          onClose={() => setRenamingCategory(null)}
+        />
+      )}
     </div>
   );
 }
@@ -348,6 +460,64 @@ const StructureForm: React.FC<StructureFormProps> = ({ currentStructure, onSave,
     </div>
   );
 };
+
+interface RenameCategoryModalProps {
+    oldName: string;
+    allCategories: string[];
+    onSave: (oldName: string, newName: string) => void;
+    onClose: () => void;
+}
+
+const RenameCategoryModal: React.FC<RenameCategoryModalProps> = ({ oldName, allCategories, onSave, onClose }) => {
+    const [newName, setNewName] = useState(oldName);
+    const [error, setError] = useState('');
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        const trimmedNewName = newName.trim();
+        if (!trimmedNewName) {
+            setError('Category name cannot be empty.');
+            return;
+        }
+        if (trimmedNewName !== oldName && allCategories.includes(trimmedNewName)) {
+            setError('This category name already exists.');
+            return;
+        }
+        onSave(oldName, trimmedNewName);
+    };
+
+    const isInvalid = !newName.trim() || newName.trim() === oldName;
+
+    return (
+        <div className="fixed inset-0 z-40 bg-black bg-opacity-50 flex items-center justify-center p-4" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+                <h3 className="text-lg font-bold mb-4">Rename Category</h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label htmlFor="newName" className="block text-sm font-medium text-slate-700 dark:text-slate-300">New Category Name</label>
+                        <input
+                            type="text"
+                            id="newName"
+                            value={newName}
+                            onChange={e => {
+                                setNewName(e.target.value);
+                                if (error) setError('');
+                            }}
+                            className={`mt-1 block w-full px-3 py-2 bg-white dark:bg-slate-700 border rounded-md shadow-sm focus:outline-none focus:ring-sky-500 focus:border-sky-500 sm:text-sm ${error ? 'border-red-500' : 'border-slate-300 dark:border-slate-600'}`}
+                            required
+                            autoFocus
+                        />
+                        {error && <p className="mt-2 text-sm text-red-500 dark:text-red-400">{error}</p>}
+                    </div>
+                    <div className="flex justify-end gap-2 pt-2">
+                        <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-600 rounded-md hover:bg-slate-200 dark:hover:bg-slate-500 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 focus:ring-slate-500">Cancel</button>
+                        <button type="submit" disabled={isInvalid} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 dark:focus:ring-offset-slate-800 focus:ring-indigo-500 disabled:bg-indigo-400 dark:disabled:bg-indigo-800/50 disabled:cursor-not-allowed">Save Changes</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
 
 const DiffViewer: React.FC<{ userInput: string; correctAnswer: string }> = ({ userInput, correctAnswer }) => {
     const userWords = userInput.trim().split(/\s+/).filter(Boolean);
